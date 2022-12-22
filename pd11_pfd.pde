@@ -1,168 +1,191 @@
+import processing.serial.*;
 
-// UI Color
+Serial serialPort;
+String comPort;
+int baudRate = 115200;
+boolean testingMode = true;
+
 int skyColor = #0F56D4;
 int floorColor = #AA6949;
 
-void setup() {  // setup() runs once
+float testSpeed = 100;
+float testAltidude = 1200;
+
+float speed;
+float altitude;
+
+PFont robotoMono;
+PFont pfdFont;
+
+void setup() {
   size(1920, 1080);
   frameRate(60);
-  PFont displayFont = loadFont("RobotoMono-Regular-48.vlw");
-  textFont(displayFont, 256);
-
+  robotoMono = loadFont("RobotoMono-Regular-48.vlw");
+  pfdFont = loadFont("MS33558.vlw");
+  textFont(robotoMono);
+  
+  if (!testingMode) {
+    serialPort=new Serial(this, Serial.list()[0], baudRate);
+    comPort=Serial.list()[0];
+    print(Serial.list());
+    serialPort.clear();
+    serialPort.bufferUntil('\n');
+  }
 }
 
 // Stolen from: https://discourse.processing.org/t/how-to-create-a-clipping-mask-that-preserves-transparency/16093/2
-void alphaSubtract(PGraphics img, PGraphics cm){
+void alphaSubtract(PGraphics img, PGraphics cm) {
   img.loadPixels();
   cm.loadPixels();
-  if(img.pixels.length != cm.pixels.length){
-    return;
-  }
-  for(int j = 0; j<img.height; j++){
-    for(int i = 0; i<img.width; i++){
-      // get argb values
-      color argb = img.pixels[(j*img.width) + i];
+  if (img.pixels.length != cm.pixels.length) return;
+  for (int j = 0; j < img.height; j++) {
+    for (int i = 0; i < img.width; i++) {
+      color argb = img.pixels[(j * img.width) + i];
       int a = argb >> 24 & 0xFF;
       int r = argb >> 16 & 0xFF;
       int g = argb >> 8 & 0xFF;
       int b = argb & 0xFF;
-      
-      color maskPixel = cm.pixels[(j*img.width) + i];
-      int alphaShift = 0xFF - (maskPixel & 0xFF);  //grab blue value from mask pixel
-      
-      // subtract alphaShift from pixel's alpha value;
-      img.pixels[(j*img.width) + i] = color(r,g,b,a-alphaShift);
+      color maskPixel = cm.pixels[(j * img.width) + i];
+      int alphaShift = 0xFF - (maskPixel & 0xFF);
+      img.pixels[(j * img.width) + i] = color(r, g, b, a - alphaShift);
     }
   }
 }
 
-void drawSky(){
+void serialEvent(Serial port) {
+  String input = port.readStringUntil('\n');
+  if (input != null) {
+    input = trim(input);
+    String[] values = split(input, " ");
+    if (values.length == 3) {
+      float phi = float(values[0]);
+      float theta = float(values[1]);
+      float psi = float(values[2]);
+      print(phi);
+      print(theta);
+      println(psi);
+      //Phi = phi; //yaw -180 ~ 180
+      //Theta = theta; //pitch -90 ~ 90
+     // Psi = psi; //roll -180 ~ 180
+    }
+  }
+}
+
+
+void drawSky() {
   noStroke();
   fill(skyColor);
-  rect(0, 0, 1920/2, 1080/2);
+  rect(0, 0, 1920 / 2, 1080 / 2);
 }
 
-void drawBottomBackground(){
-  scale(1);
-  rotate(0); 
+void drawBottomBackground() {
   noStroke();
   fill(#11110F);
-  rect(0, 1080/2, 1920/2, 1080/2);
+  rect(0, 1080 / 2, 1920 / 2, 1080 / 2);
+}
+
+void drawAtitudeFloor() {
+  fill(floorColor);
+  rect(0, 1080 / 4, 1920 / 2, 1080 / 2);
 }
 
 
-void drawAtitudeFloor(){
-    scale(1); 
-    fill(floorColor); 
-    rotate(0); 
-    rect(0, 1080/4, 1920/2, 1080/2); 
-    rotate(0); 
-    rotate(-PI-PI/6); 
-    rotate(PI+PI/6); 
-    rotate(-PI/6);  
- 
-    rotate(PI/6);
-    scale(1.0);
+// Tick is 4cm bar is 20cm
+PGraphics spdticksToMask, speedBGMask;
 
-    
-}
-//unit is cm
-// bar is .25cm per
-
-PGraphics ticksToMask, speedBGMask;
-
-void drawSpeed(float speed){
-  
-  
-  ticksToMask = createGraphics(width, height);
+void drawSpeed(float speed) {
+  spdticksToMask = createGraphics(width, height);
   speedBGMask = createGraphics(width, height);
-  
-  //Draw speed ticks
-  ticksToMask.beginDraw();
-  ticksToMask.clear();
-  ticksToMask.stroke(255); //color white
-  ticksToMask.strokeWeight(6);
-  ticksToMask.line(128, 450, 128, 0); //trackline
-  ticksToMask.strokeWeight(4);
-  ticksToMask.strokeCap(PROJECT);
-  ticksToMask.textSize(20);
-  //loop for drawing speed ticks
-  for (int i = 0; i < 201; i = i+1) {
+
+  // Draw speed ticks mask
+  spdticksToMask.beginDraw();
+
+  //Backing Line
+  spdticksToMask.stroke(255);  // color white
+  spdticksToMask.strokeWeight(6);
+  spdticksToMask.line(128, 450, 128, 0);
+
+  // Actual Speed Ticks
+  spdticksToMask.strokeWeight(4);
+  spdticksToMask.strokeCap(PROJECT);
+  spdticksToMask.textSize(20);
+  spdticksToMask.textFont(robotoMono, 20);
+  spdticksToMask.textAlign(CENTER);
+  // Draw speed ticks
+  for (int i = 0; i < 301; i = i + 1) {
     int x = 0;
     // First and Fifth tick are Larger
-    if (i % 5 == 0){
+    if (i % 5 == 0 || i == 0) {
       x = 100;
-      ticksToMask.text(str(int(i*4)), 55, 1080/4 - (i*24) -1 + speed * 6 + 18/4 + 3); 
-    }
-    else if (i == 0){
-      x = 100;
-      ticksToMask.text(str(int(i*4)), 55, 1080/4 - (i*24) -1 + speed * 6 +3); 
-    }
-    else {
-      x= 110;
+      spdticksToMask.text(str(int(i * 4)), 76, 1080 / 4 - (i * 24) - 1 + speed * 6 + 18 / 4 + 3);
+    } else {
+      x = 110;
     }
     // Witchcraft Magic
-    ticksToMask.line(126, 1080/4 - (i*24) -1 + speed * 6, x, 1080/4 - (i*24) -1 + speed * 6 );
+    spdticksToMask.line(126, 1080 / 4 - (i * 24) - 1 + speed * 6, x, 1080 / 4 - (i * 24) - 1 + speed * 6);
   }
-  ticksToMask.endDraw();
-  
+  spdticksToMask.endDraw();
+
   speedBGMask.beginDraw();
   speedBGMask.noStroke();
   speedBGMask.rotate(0);
   speedBGMask.scale(1);
-  speedBGMask.rect(32, 1080/4 - 180, 140, 360);
+  speedBGMask.rect(32, 1080 / 4 - 180, 140, 360);
   speedBGMask.endDraw();
-  alphaSubtract(ticksToMask, speedBGMask);
-  
-  image(ticksToMask, 0, 0);
-  
-  //Speed Number Background
+
+  alphaSubtract(spdticksToMask, speedBGMask);
+  image(spdticksToMask, 0, 0);
+
+  // Speed Number Background
+  beginShape();
   stroke(255);
   strokeWeight(2);
-  beginShape();
-  vertex(32, 1080/4 -20 -1);
-  vertex(80, 1080/4 -20 -1);
-  vertex(98, 1080/4 -1);
-  vertex(80, 1080/4 +20 -1);
-  vertex(32, 1080/4 +20 -1);
+  vertex(32, 1080 / 4 - 20 - 1);
+  vertex(80, 1080 / 4 - 20 - 1);
+  vertex(98, 1080 / 4 - 1);
+  vertex(80, 1080 / 4 + 20 - 1);
+  vertex(32, 1080 / 4 + 20 - 1);
   endShape(CLOSE);
-  
-  //Speed text
-  fill(255,255,255);
+
+  // Speed text
+  textFont(robotoMono);
+  textAlign(CENTER);
   textSize(24);
-  if(testSpeed > 800){
-    fill(255, 0, 0);
-    text("SPD", 40, 1080/4 +8); 
-  } else{
+  fill(testSpeed > 800 ? 255 : 0, testSpeed < 800 ? 255 : 0, 0);
+  text(testSpeed > 800 ? "SPD" : str(int(testSpeed)), 60, 1080 / 4 + 8);
+}
+
+void drawTintedBackgrounds() {
+  fill(0, 0, 0, 100);
+  rect(32, 1080 / 4 - 180, 140, 360); // Speed Background
+  rect(1920 / 2 - (128 + 48), 1080 / 4 - 180, 140, 360); // Altitude Indicator Background
+  rect(1920 / 4 - (160), 0 , 320, 64);
+}
+
+
+void draw() {
+  background(0);
+  drawSky();
+  drawAtitudeFloor();       
+  drawTintedBackgrounds();
+  drawBottomBackground();
+  drawSpeed(testingMode == false ? speed : testSpeed);
+  
+  if(!testingMode){
+    noStroke();
     fill(0, 255, 0);
-    text(str(int(testSpeed)), 40, 1080/4 +8); 
+    textFont(pfdFont);
+    textSize(24);
+    textAlign(CENTER);
+    text(comPort, 486,48 - 3);
+  } else{
+    noStroke();
+    fill(255, 255, 0);
+    textFont(pfdFont);
+    textSize(24);
+    textAlign(CENTER);
+    text("TESTING", 486,48 - 3);
   }
 }
 
-void drawInfoBackground(){ 
-  // IAS Background
-  noStroke();
-  rotate(0);
-  scale(1);
-  fill(0, 0, 0, 100);
-  rect(32, 1080/4 - 180, 140, 360);
-  
-  // Altitude Indicator Background
-  noStroke();
-  rotate(0);
-  scale(1);
-  fill(0, 0, 0, 100);
-  rect(1920/2 - (128 + 48), 1080/4 - 180, 140, 360);
-}
-
-float testSpeed = 0;
- 
-void draw() {  
-  testSpeed +=10;
-  background(0);
-  drawSky();
-  drawAtitudeFloor();
-  drawInfoBackground();
-  drawBottomBackground();
-  drawSpeed(testSpeed);
-}
+//TODO: Com port of connected arduino at the top (mimic ILS text on B737). COM13 - green; TEST - Yellow; N/C - Red
